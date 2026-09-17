@@ -1,0 +1,30 @@
+﻿using Microsoft.EntityFrameworkCore;
+using OrderFlow.Domain.Entities;
+
+namespace OrderFlow.Infrastructure.Persistence;
+public class OrderFlowDbContext : DbContext
+{
+    public OrderFlowDbContext(
+        DbContextOptions<OrderFlowDbContext> options)
+        : base(options)
+    {
+    }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        modelBuilder.ApplyConfigurationsFromAssembly(
+            typeof(OrderFlowDbContext).Assembly);
+    }
+
+    public DbSet<Product> Products => Set<Product>();
+
+    public DbSet<Customer> Customers => Set<Customer>();
+
+    public DbSet<Order> Orders => Set<Order>();
+
+    public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+
+    public DbSet<User> Users => Set<User>();
+}

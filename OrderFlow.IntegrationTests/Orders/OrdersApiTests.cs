@@ -1,13 +1,16 @@
-﻿using System.Net;
-using System.Net.Http.Json;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
+using OrderFlow.Application.DTOs.Auth;
 using OrderFlow.Application.DTOs.Customers;
 using OrderFlow.Application.DTOs.Orders;
 using OrderFlow.Application.DTOs.Products;
+using OrderFlow.Domain.Entities;
+using OrderFlow.Domain.Enums;
 using OrderFlow.Infrastructure.Persistence;
 using OrderFlow.IntegrationTests.Infrastructure;
+using System.Net;
 using System.Net.Http.Headers;
-using OrderFlow.Application.DTOs.Auth;
+using System.Net.Http.Json;
+using OrderFlow.Application.Interfaces;
 
 namespace OrderFlow.IntegrationTests.Orders;
 
@@ -141,15 +144,41 @@ public class OrdersApiTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Ship_WhenOrderIsConfirmed_ChangesStatusToShipped()
+    public async Task Ship_WhenUserIsCustomer_ReturnsForbidden()
     {
         // Arrange
         await AuthenticateAsync();
+
         var order = await CreateTestOrderAsync();
 
         await _client.PostAsync(
             $"/api/orders/{order.Id}/confirm",
             null);
+
+        // Act
+        var response = await _client.PostAsync(
+            $"/api/orders/{order.Id}/ship",
+            null);
+
+        // Assert
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Ship_WhenUserIsAdmin_ChangesStatusToShipped()
+    {
+        // Arrange
+        await AuthenticateAsync();
+
+        var order = await CreateTestOrderAsync();
+
+        await _client.PostAsync(
+            $"/api/orders/{order.Id}/confirm",
+            null);
+
+        await AuthenticateAsAdminAsync();
 
         // Act
         var response = await _client.PostAsync(
@@ -174,11 +203,14 @@ public class OrdersApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await AuthenticateAsync();
+
         var order = await CreateTestOrderAsync();
 
         await _client.PostAsync(
             $"/api/orders/{order.Id}/confirm",
             null);
+
+        await AuthenticateAsAdminAsync();
 
         await _client.PostAsync(
             $"/api/orders/{order.Id}/ship",
@@ -248,7 +280,10 @@ public class OrdersApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await AuthenticateAsync();
+
         var order = await CreateTestOrderAsync();
+
+        await AuthenticateAsAdminAsync();
 
         // Act
         var response = await _client.PostAsync(
@@ -284,11 +319,14 @@ public class OrdersApiTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await AuthenticateAsync();
+
         var order = await CreateTestOrderAsync();
 
         await _client.PostAsync(
             $"/api/orders/{order.Id}/confirm",
             null);
+
+        await AuthenticateAsAdminAsync();
 
         await _client.PostAsync(
             $"/api/orders/{order.Id}/ship",
@@ -491,6 +529,62 @@ public class OrdersApiTests : IClassFixture<CustomWebApplicationFactory>
 
         Assert.NotNull(authResponse);
         Assert.False(string.IsNullOrWhiteSpace(authResponse.Token));
+
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                authResponse.Token);
+    }
+
+    private async Task AuthenticateAsAdminAsync()
+    {
+        var email = $"admin-order-tests-{Guid.NewGuid()}@example.com";
+        const string password = "Password123!";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var dbContext =
+                scope.ServiceProvider
+                    .GetRequiredService<OrderFlowDbContext>();
+
+            var passwordHasher =
+                scope.ServiceProvider
+                    .GetRequiredService<IPasswordHasher>();
+
+            var passwordHash =
+                passwordHasher.Hash(password);
+
+            var user = new User(
+                Guid.NewGuid(),
+                email,
+                passwordHash,
+                UserRole.Admin,
+                DateTime.UtcNow);
+
+            dbContext.Users.Add(user);
+
+            await dbContext.SaveChangesAsync();
+        }
+
+        var loginRequest = new LoginRequest
+        {
+            Email = email,
+            Password = password
+        };
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/auth/login",
+            loginRequest);
+
+        response.EnsureSuccessStatusCode();
+
+        var authResponse =
+            await response.Content
+                .ReadFromJsonAsync<AuthResponse>();
+
+        Assert.NotNull(authResponse);
+        Assert.False(
+            string.IsNullOrWhiteSpace(authResponse.Token));
 
         _client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue(

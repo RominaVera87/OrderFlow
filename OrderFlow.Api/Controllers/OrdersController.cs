@@ -69,6 +69,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost("{id:guid}/ship")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<OrderResponse>> Ship(Guid id, CancellationToken cancellationToken)
     {
         var order = await _orderService.ShipAsync(

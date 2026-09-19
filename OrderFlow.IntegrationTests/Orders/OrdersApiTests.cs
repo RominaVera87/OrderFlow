@@ -6,17 +6,17 @@ using OrderFlow.Application.DTOs.Orders;
 using OrderFlow.Application.DTOs.Products;
 using OrderFlow.Infrastructure.Persistence;
 using OrderFlow.IntegrationTests.Infrastructure;
+using System.Net.Http.Headers;
+using OrderFlow.Application.DTOs.Auth;
 
 namespace OrderFlow.IntegrationTests.Orders;
 
-public class OrdersApiTests
-    : IClassFixture<CustomWebApplicationFactory>
+public class OrdersApiTests : IClassFixture<CustomWebApplicationFactory>
 {
     private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
-    public OrdersApiTests(
-        CustomWebApplicationFactory factory)
+    public OrdersApiTests(CustomWebApplicationFactory factory)
     {
         _factory = factory;
         _client = factory.CreateClient();
@@ -26,6 +26,7 @@ public class OrdersApiTests
     public async Task Create_WithValidRequest_CreatesOrderAndDecreasesStock()
     {
         // Arrange
+        await AuthenticateAsync();
         var customer = await CreateCustomerAsync();
         var product = await CreateProductAsync(10);
 
@@ -52,6 +53,8 @@ public class OrdersApiTests
     public async Task GetById_WhenOrderExists_ReturnsOrder()
     {
         // Arrange
+        await AuthenticateAsync();
+
         var customer = await CreateCustomerAsync();
         var product = await CreateProductAsync(10);
 
@@ -82,6 +85,8 @@ public class OrdersApiTests
     public async Task GetAll_ReturnsCreatedOrder()
     {
         // Arrange
+        await AuthenticateAsync();
+
         var customer = await CreateCustomerAsync();
         var product = await CreateProductAsync(10);
 
@@ -114,6 +119,7 @@ public class OrdersApiTests
     public async Task Confirm_WhenOrderIsPending_ChangesStatusToConfirmed()
     {
         // Arrange
+        await AuthenticateAsync();
         var order = await CreateTestOrderAsync();
 
         // Act
@@ -138,6 +144,7 @@ public class OrdersApiTests
     public async Task Ship_WhenOrderIsConfirmed_ChangesStatusToShipped()
     {
         // Arrange
+        await AuthenticateAsync();
         var order = await CreateTestOrderAsync();
 
         await _client.PostAsync(
@@ -166,6 +173,7 @@ public class OrdersApiTests
     public async Task Deliver_WhenOrderIsShipped_ChangesStatusToDelivered()
     {
         // Arrange
+        await AuthenticateAsync();
         var order = await CreateTestOrderAsync();
 
         await _client.PostAsync(
@@ -198,6 +206,7 @@ public class OrdersApiTests
     public async Task Cancel_WhenOrderIsPending_RestoresProductStock()
     {
         // Arrange
+        await AuthenticateAsync();
         var customer = await CreateCustomerAsync();
         var product = await CreateProductAsync(10);
 
@@ -238,6 +247,7 @@ public class OrdersApiTests
     public async Task Ship_WhenOrderIsPending_ReturnsBadRequest()
     {
         // Arrange
+        await AuthenticateAsync();
         var order = await CreateTestOrderAsync();
 
         // Act
@@ -255,6 +265,7 @@ public class OrdersApiTests
     public async Task Deliver_WhenOrderIsPending_ReturnsBadRequest()
     {
         // Arrange
+        await AuthenticateAsync();
         var order = await CreateTestOrderAsync();
 
         // Act
@@ -272,6 +283,7 @@ public class OrdersApiTests
     public async Task Cancel_WhenOrderIsDelivered_ReturnsBadRequest()
     {
         // Arrange
+        await AuthenticateAsync();
         var order = await CreateTestOrderAsync();
 
         await _client.PostAsync(
@@ -301,6 +313,7 @@ public class OrdersApiTests
     public async Task Confirm_WhenOrderIsCancelled_ReturnsBadRequest()
     {
         // Arrange
+        await AuthenticateAsync();
         var order = await CreateTestOrderAsync();
 
         await _client.PostAsync(
@@ -315,6 +328,22 @@ public class OrdersApiTests
         // Assert
         Assert.Equal(
             HttpStatusCode.BadRequest,
+            response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetAll_WithoutAuthentication_ReturnsUnauthorized()
+    {
+        // Arrange
+        _client.DefaultRequestHeaders.Authorization = null;
+
+        // Act
+        var response = await _client.GetAsync(
+            "/api/orders");
+
+        // Assert
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
             response.StatusCode);
     }
 
@@ -439,5 +468,33 @@ public class OrdersApiTests
             await dbContext.Orders.FindAsync(orderId);
 
         Assert.NotNull(order);
+    }
+
+
+    private async Task AuthenticateAsync()
+    {
+        var request = new RegisterRequest
+        {
+            Email = $"order-test-{Guid.NewGuid()}@example.com",
+            Password = "Password123!"
+        };
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/auth/register",
+            request);
+
+        response.EnsureSuccessStatusCode();
+
+        var authResponse =
+            await response.Content
+                .ReadFromJsonAsync<AuthResponse>();
+
+        Assert.NotNull(authResponse);
+        Assert.False(string.IsNullOrWhiteSpace(authResponse.Token));
+
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                authResponse.Token);
     }
 }

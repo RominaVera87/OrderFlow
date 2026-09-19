@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using OrderFlow.Application.Exceptions;
 
 namespace OrderFlow.Api.Middleware;
@@ -7,10 +8,12 @@ namespace OrderFlow.Api.Middleware;
 public class ExceptionHandlingMiddleware
 {
     private readonly RequestDelegate _next;
+    private readonly ILogger<ExceptionHandlingMiddleware> _logger;
 
-    public ExceptionHandlingMiddleware(RequestDelegate next)
+    public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
     {
         _next = next;
+        _logger = logger;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -30,7 +33,7 @@ public class ExceptionHandlingMiddleware
         {
             await WriteErrorResponseAsync(
                 context,
-                HttpStatusCode.BadRequest,
+                HttpStatusCode.Unauthorized,
                 exception.Message);
         }
         catch (InvalidOperationException exception)
@@ -40,8 +43,12 @@ public class ExceptionHandlingMiddleware
                 HttpStatusCode.BadRequest,
                 exception.Message);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            _logger.LogError(
+                exception,
+                "An unexpected error occurred.");
+
             await WriteErrorResponseAsync(
                 context,
                 HttpStatusCode.InternalServerError,

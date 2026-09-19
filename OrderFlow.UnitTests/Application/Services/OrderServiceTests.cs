@@ -1,4 +1,5 @@
 ﻿using Moq;
+using Microsoft.EntityFrameworkCore;
 using OrderFlow.Application.DTOs.Orders;
 using OrderFlow.Application.Exceptions;
 using OrderFlow.Application.Interfaces;
@@ -24,6 +25,86 @@ public class OrderServiceTests
             _customerRepositoryMock.Object,
             _productRepositoryMock.Object,
             _orderRepositoryMock.Object);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenSaveChangesThrowsConcurrency_ThrowsOrderValidationException()
+    {
+        // Arrange
+        var customerId = Guid.NewGuid();
+        var productId = Guid.NewGuid();
+
+        var customer = new Customer(
+            customerId,
+            "John Smith",
+            "john.smith@example.com");
+
+        var product = new Product(
+            productId,
+            "Gaming Mouse",
+            "Wireless gaming mouse",
+            1500m,
+            10);
+
+        var request = new CreateOrderRequest
+        {
+            CustomerId = customerId,
+            Items =
+            [
+                new CreateOrderItemRequest
+                {
+                    ProductId = productId,
+                    Quantity = 2
+                }
+            ]
+        };
+
+        _customerRepositoryMock
+            .Setup(repository => repository.GetByIdAsync(
+                customerId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(customer);
+
+        _productRepositoryMock
+            .Setup(repository => repository.GetByIdsForUpdateAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([product]);
+
+        _orderRepositoryMock
+            .Setup(repository => repository.AddAsync(
+                It.IsAny<Order>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _orderRepositoryMock
+            .Setup(repository => repository.SaveChangesAsync(
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DbUpdateConcurrencyException());
+
+        // Act
+        var act = async () => await _service.CreateAsync(
+            request,
+            CancellationToken.None);
+
+        // Assert
+        var exception =
+            await Assert.ThrowsAsync<OrderValidationException>(act);
+
+        Assert.Equal(
+            "The data changed while the operation was being processed. Please try again.",
+            exception.Message);
+
+        _orderRepositoryMock.Verify(
+            repository => repository.AddAsync(
+                It.IsAny<Order>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _orderRepositoryMock.Verify(
+            repository => repository.SaveChangesAsync(
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

@@ -26,6 +26,27 @@ public class OrdersApiTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Login_WithInvalidCredentials_ReturnsUnauthorized()
+    {
+        // Arrange
+        var loginRequest = new LoginRequest
+        {
+            Email = "no-such-user@example.com",
+            Password = "invalid-password"
+        };
+
+        // Act
+        var response = await _client.PostAsJsonAsync(
+            "/api/auth/login",
+            loginRequest);
+
+        // Assert
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            response.StatusCode);
+    }
+
+    [Fact]
     public async Task Create_WithValidRequest_CreatesOrderAndDecreasesStock()
     {
         // Arrange

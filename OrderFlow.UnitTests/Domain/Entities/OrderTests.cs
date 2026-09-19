@@ -252,6 +252,26 @@ public class OrderTests
     }
 
     [Fact]
+    public void Confirm_WhenOrderIsAlreadyConfirmed_ThrowsInvalidOperationException()
+    {
+        // Arrange
+        var order = CreateOrderWithItem();
+
+        order.Confirm();
+
+        // Act
+        var act = () => order.Confirm();
+
+        // Assert
+        var exception =
+            Assert.Throws<InvalidOperationException>(act);
+
+        Assert.Equal(
+            "Only pending orders can be confirmed.",
+            exception.Message);
+    }
+
+    [Fact]
     public void AddItem_WhenOrderIsConfirmed_ThrowsInvalidOperationException()
     {
         // Arrange

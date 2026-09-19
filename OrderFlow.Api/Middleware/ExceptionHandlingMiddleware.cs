@@ -40,6 +40,13 @@ public class ExceptionHandlingMiddleware
                 HttpStatusCode.BadRequest,
                 exception.Message);
         }
+        catch (Exception)
+        {
+            await WriteErrorResponseAsync(
+                context,
+                HttpStatusCode.InternalServerError,
+                "An unexpected error occurred.");
+        }
     }
 
     private static async Task WriteErrorResponseAsync(
